@@ -1,0 +1,80 @@
+This miner serves data from third parties. Their terms travel with it.
+
+Each block below names one upstream, what it provides, the licence it publishes under, and the
+exact credit line that licence requires. Every credit line marked required also travels in the
+`attribution` field of every answer this miner returns, not only in this file.
+
+## api.kraken.com
+
+Crypto last trade, 24 hour volume and the day's open.
+
+Licence: No stated licence for the market data.
+
+Required credit line:
+
+    Market data from the Kraken public ticker.
+
+## www.bitstamp.net
+
+Crypto last trade and 24 hour volume, first fallback.
+
+Licence: Commercial reuse granted by the API terms.
+
+In the provider's own words: "Bitstamp allows the incorporation and redistribution of our exchange data for commercial purposes."
+
+Required credit line:
+
+    Market data from the Bitstamp public ticker.
+
+## api.gemini.com
+
+Crypto last trade, second fallback.
+
+Licence: No stated licence for the market data.
+
+Required credit line:
+
+    Market data from the Gemini public ticker.
+
+## api.frankfurter.dev
+
+Fiat exchange rates (European Central Bank reference rates).
+
+Licence: MIT for the software. The rates are ECB reference rates.
+
+In the provider's own words: "Yes, absolutely. See each provider's terms for details on the underlying data." (on commercial use)
+
+Required credit line:
+
+    Exchange rates from Frankfurter, sourced from European Central Bank reference rates.
+
+## stooq.com
+
+Stock quotes.
+
+Licence: No stated licence.
+
+In the provider's own words: "Redistribution of data found on the website is not allowed without the consent of Stooq."
+
+No credit line is required by this source.
+
+## query1.finance.yahoo.com
+
+Stock quotes, fallback.
+
+Licence: No stated licence.
+
+In the provider's own words: Reuse "for any commercial purpose" is barred, as is automated collection "using any automated means, devices, programs, algorithms or methodologies, including but not limited to robots, spiders, scrapers".
+
+No credit line is required by this source.
+
+## api.llama.fi
+
+Total value locked for a protocol or chain.
+
+Licence: No stated licence.
+
+In the provider's own words: A licence "to access and use the Site for personal, non-commercial purposes", and clause 8 forbids "republish the data in any form without permission".
+
+No credit line is required by this source.
+

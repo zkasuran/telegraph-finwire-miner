@@ -1,0 +1,124 @@
+version: "1"
+kind: miner
+id: 7322
+slug: finwire-tvl
+protocol: generic
+name: FinWire TVL Lookup
+description: >
+  Total value locked of a DeFi protocol or a whole chain, read live at request time from
+  DeFiLlama. Answers the TVL_LOOKUP intent in one natural sentence with the figure at full
+  precision. A protocol total comes from the DeFiLlama tvl endpoint, a chain total from its
+  chains list. Give it a protocol slug such as aave or a chain such as ethereum. Defaults to
+  the Aave protocol when unfilled. No API key, nothing cached that can go stale.
+base_url: https://telegraph-fin.margyn.workers.dev
+
+docs:
+  documentation: https://telegraph-fin.margyn.workers.dev/
+
+limitations:
+  - code: MAX_PARAM_VALUE
+    message: protocol is a DeFiLlama slug such as aave, uniswap, lido. Pass chain=ethereum for a chain total instead. A whole question is accepted too. Defaults to aave when unfilled.
+    param: protocol
+    property: length
+    value_num: 60
+    operator: lte
+
+rate_limit_per_sec: 2
+cache_ttl_sec: 10
+circuit_threshold: 5
+circuit_cooldown_seconds: 30
+
+input_schema:
+  type: object
+  properties:
+    question:
+      type: string
+      description: >
+        The full natural-language question, verbatim, for example "What is the TVL of Aave?"
+        or "total value locked on Base". The miner reads the protocol or chain from it, so
+        passing the whole question works as well as the structured fields.
+    protocol:
+      type: string
+      description: DeFiLlama protocol slug, for example aave, uniswap, lido.
+    chain:
+      type: string
+      description: Chain name for a chain total instead of a protocol, for example ethereum, base, arbitrum.
+
+output_schema:
+  type: object
+  properties:
+    kind:
+      type: string
+      description: protocol or chain, which total the answer is.
+    name:
+      type: string
+      description: Protocol or chain name the total refers to.
+    symbol:
+      type: string
+      description: Token symbol, when known.
+    slug:
+      type: string
+      description: DeFiLlama slug, for a protocol total.
+    chain_id:
+      type: integer
+      description: EVM chain id, for a chain total.
+    tvl_usd:
+      type: number
+      description: Total value locked in US dollars.
+    confidence:
+      type: number
+      description: 0.96 for a direct read.
+    summary:
+      type: string
+      description: One sentence with the total value locked, then a full readings block.
+    source:
+      type: string
+      description: DeFiLlama.
+    as_of:
+      type: string
+      description: ISO 8601 timestamp of the read.
+
+endpoints:
+  - path: /tvl
+    external_path: /tvl
+    method: GET
+    description: >
+      Total value locked for one protocol or chain, as query parameters (?protocol=aave or
+      ?chain=ethereum). Also accepts a whole question in ?question= or ?query=.
+
+semantics:
+  signal_mapping:
+    confidence_field: confidence
+    label_field: summary
+    reason_field: summary
+  supported_intents:
+    - TVL_LOOKUP
+
+on_chain:
+  transform: direct
+  min_price_usdc: 0.01
+  fields:
+    strings:
+      - index: 0
+        name: name
+        description: Protocol or chain name the total refers to.
+        source_path: name
+      - index: 1
+        name: kind
+        description: protocol or chain, which total the answer is.
+        source_path: kind
+      - index: 2
+        name: summary
+        description: One sentence with the total value locked, then a full readings block.
+        source_path: summary
+    integers:
+      - index: 0
+        name: tvl_usd
+        description: Total value locked in whole US dollars.
+        source_path: tvl_usd
+        multiplier: 1
+  request:
+    - endpoint: tvl
+      method: GET
+      query_params:
+        protocol: { source: strings.0 }

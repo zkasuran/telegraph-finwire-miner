@@ -1,0 +1,8 @@
+name = "telegraph-fin"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+# FinWire finance miner for Telegraph. Serves CRYPTO_PRICE (/price), CURRENCY_EXCHANGE (/fx),
+# TVL_LOOKUP (/tvl), STOCK_PRICE (/stock) and FINANCIAL_DATA (/financial) from public keyless
+# sources: CoinGecko, Coinbase, Binance, open.er-api.com, DeFiLlama, Stooq and Yahoo Finance.
+# No secrets, no bindings: deploy is just `wrangler deploy`.
