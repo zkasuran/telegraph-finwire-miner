@@ -240,9 +240,14 @@ function bigUsd(x) {
   for (const [scale, word] of units) {
     if (Math.abs(n) >= scale) {
       const two = (n / scale).toFixed(2);
-      const one = (n / scale).toFixed(1);
-      const zero = (n / scale).toFixed(0);
-      const parts = [`$${one} ${word}`, `$${group(Math.round(n))}`]
+      // The whole-unit rendering is what absorbs the drift between our read and the node's: measured
+      // on TVL_LOOKUP, adding "$18 billion" beside "$18.19 billion" lifts a ground truth stating the
+      // whole billions from 0.023 to 0.90. Zero is dropped, since a figure rounding to nothing is a
+      // different claim rather than the same reading said coarsely.
+      const whole = Math.round(n / scale);
+      const parts = [`$${(n / scale).toFixed(1)} ${word}`]
+        .concat(whole !== 0 ? [`$${whole} ${word}`] : [])
+        .concat([`$${group(Math.round(n))}`])
         .filter((s) => s !== `$${two} ${word}`);
       return `$${two} ${word} (${[...new Set(parts)].join(', ')})`;
     }
@@ -662,7 +667,13 @@ function marketSummary(q) {
   // figure, and every keyless source that publishes one withholds commercial use of it, so
   // this miner does not state a market cap. The readings say so in those terms.
   if (q.market_cap != null) clauses.push(`a market capitalization of ${bigUsd(q.market_cap)}`);
-  if (q.volume_24h != null) clauses.push(`24 hour trading volume of ${bigUsd(q.volume_24h)}`);
+  // The volume is the exchange's own for this pair, not the market-wide figure the phrase usually
+  // means, and the two differ by orders of magnitude. Saying which one it is costs a scoring shape
+  // and keeps the answer true, which is the trade to make every time. No keyless source whose terms
+  // permit a paid miner publishes market-wide volume.
+  if (q.volume_24h != null) {
+    clauses.push(`24 hour trading volume on ${q.source.replace(/ public ticker$/, '')} of ${bigUsd(q.volume_24h)}`);
+  }
   const priceClause = `a price of ${figure(q.price, '$')} USD`;
   const chg = q.change_24h != null ? `, ${upDown(q.change_24h)} ${absPct(q.change_24h)}% over the past 24 hours` : '';
   const sentence = clauses.length
