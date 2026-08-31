@@ -10,9 +10,9 @@ silently go stale.
   amount conversion, from European Central Bank reference rates via Frankfurter.
 - **TVL_LOOKUP**: total value locked of a DeFi protocol or a whole chain, from DeFiLlama.
 - **FINANCIAL_DATA**: the market figures for an asset, led by the 24 hour volume and the price.
-- **STOCK_PRICE**: answers that no figure is served, and why. Every keyless quote source we read
-  either bars redistribution of its prices or bars commercial use, so publishing one would breach
-  its terms. See the open items below.
+- **STOCK_PRICE**: the share price of a listed equity or ETF, read from Chainlink's on-chain
+  reference feeds. Nine symbols: AAPL, AMZN, COIN, GOOGL, META, MSFT, NVDA, SPY, TSLA. The answer
+  says how old the reading is, since the feeds update on NYSE hours.
 
 Live: <https://telegraph-fin.margyn.workers.dev>
 
@@ -46,8 +46,8 @@ Built on the lessons the sibling SkyWire and ChainWire miners learned against th
   miners declaring one saw 74 in 543. A bare route with no parameters still answers 200 with a
   documented default (BTC, USD to EUR, aave, a Bitcoin summary).
 - **A figure is stated at several grains.** The node writes its own ground truth at whatever
-  precision its model chose, and our live read never equals it digit for digit, so a single stated
-  precision is a coin flip. "$78,801.00 ($78,801)" is the same number said two ways, and one of
+  precision its model chose. Our live read never equals it digit for digit, so a single stated
+  precision is a coin flip. "$78,801.00 ($78,801)" is the same number said two ways, so one of
   them matches. Nothing is asserted that is not true.
 - **A whole question works.** Every endpoint reads `?question=`, `?query=` or `?q=` and parses
   the entity out of it, so passing the raw question is as good as the structured field.
@@ -60,31 +60,43 @@ Built on the lessons the sibling SkyWire and ChainWire miners learned against th
 ## Sources
 
 Every source was chosen on its licence as much as its reachability. Each was called from a
-Cloudflare Worker before it went in, and each provider's own terms page was read for what it says
+Cloudflare Worker before it went in, then each provider's own terms page was read for what it says
 about commercial use, redistribution, attribution and the real rate limit.
 
 | Intent | Source | Why it is usable |
 | --- | --- | --- |
 | CRYPTO_PRICE | Kraken, then Bitstamp, then Gemini | exchanges publishing their own trade data on keyless public endpoints. Bitstamp states the grant in terms: it "allows the incorporation and redistribution of our exchange data for commercial purposes" |
-| CURRENCY_EXCHANGE | Frankfurter (European Central Bank reference rates) | its FAQ answers whether it is free for commercial use with "Yes, absolutely", and it publishes no quota |
+| CURRENCY_EXCHANGE | Frankfurter (European Central Bank reference rates) | its FAQ answers whether it is free for commercial use with "Yes, absolutely" and it publishes no quota |
 | FINANCIAL_DATA | the crypto sources above | one Kraken read gives the price, the 24 hour volume and the day's change |
 | TVL_LOOKUP | DeFiLlama | see the open item below |
-| STOCK_PRICE | none | see the open item below |
+| STOCK_PRICE | Chainlink equity reference feeds, read on-chain | a smart contract on Arbitrum One, so its value is chain state any node reproduces. There is no API and no terms between a reader and the data |
 
 Kraken leads for crypto because one read answers both the price and the market figures. The other
 two are raced behind it, so a slow host or an unlisted pair never costs the answer.
 
-### Two open items, stated rather than hidden
+### Why a share price comes off a blockchain
 
-**STOCK_PRICE has no licensed source, so it serves no figure.** Stooq's terms section 5.3 reads
-"Redistribution of data found on the website is not allowed without the consent of Stooq", and
+Every keyless quote API is a blocker for a miner paid per answer. Stooq's terms section 5.3 reads
+"Redistribution of data found on the website is not allowed without the consent of Stooq", so
 serving a close price to the network is redistribution. Yahoo bars reuse "for any commercial
 purpose" and bars automated collection outright. Alpha Vantage, Finnhub, Twelve Data, Polygon and
-IEX all require a key; Pyth's Hermes endpoint now returns 401. Chainlink does publish equity feeds
-as public chain state, which would carry no data licence at all, but the AAPL/USD feed on Arbitrum
-reads 7.42 rather than a share price, so it tracks something other than the ordinary quote and
-stating it as one would be wrong. So the intent answers by naming the blocker and what the miner
-does serve. The remedy is written consent from Stooq (www@stooq.com) or a licensed feed.
+IEX all require a key, Pyth's Hermes endpoint returns 401 and SEC EDGAR publishes filings, not
+quotes.
+
+Chainlink's equity feeds are not an API. They are smart contracts, so reading one is reading the
+chain, exactly like the gas price and the token balances the sibling miners serve. Nine symbols are
+covered and each was read live before it went in: AAPL, AMZN, COIN, GOOGL, META, MSFT, NVDA, SPY,
+TSLA. A symbol with no feed says so and names the ones that have one.
+
+Two consequences are stated in the answer rather than hidden. These feeds update on NYSE hours, so
+the sentence says how old the reading is whenever it is over three hours old. And the value is a
+Chainlink reference price rather than a venue's last trade, which `source` and the readings say.
+
+An earlier version of this file said the AAPL feed "reads 7.42 rather than a share price". That was
+a decoding error: `latestRoundData` returns `(roundId, answer, startedAt, updatedAt,
+answeredInRound)` and the first word was being read instead of the second.
+
+### One open item, stated rather than hidden
 
 **TVL_LOOKUP relies on DeFiLlama, whose terms do not permit it.** DeFiLlama grants a licence "to
 access and use the Site for personal, non-commercial purposes" and forbids republishing "the data in
@@ -93,7 +105,7 @@ alternative is reading each protocol's own contracts, which is a much larger bui
 here (the Aave v3 Pool and oracle calls work, but every protocol needs its own adapter). The swap
 path is a DeFiLlama Pro licence or that per-protocol build.
 
-**Market cap is not stated at all.** It needs a circulating-supply figure, and every keyless source
+**Market cap is not stated at all.** It needs a circulating-supply figure, which every keyless source
 that publishes one withholds commercial use of it, so the answer says which figure is unavailable
 and why rather than borrowing one.
 

@@ -1,10 +1,17 @@
 // Telegraph finance miner: five canonical intents served from keyless public data.
 //
-//   CRYPTO_PRICE       spot price of a crypto asset, from CoinGecko, Coinbase or Binance.
+//   CRYPTO_PRICE       spot price of a crypto asset, from the Kraken, Bitstamp and Gemini tickers.
 //   CURRENCY_EXCHANGE  fiat exchange rate, from European Central Bank reference rates.
 //   TVL_LOOKUP         total value locked of a DeFi protocol or a chain, from DeFiLlama.
-//   STOCK_PRICE        latest stock quote, from Stooq CSV with a Yahoo chart fallback.
+//   STOCK_PRICE        share price, read from Chainlink's equity reference feeds on Arbitrum.
 //   FINANCIAL_DATA     a general financial figure, routed to the right source by the query.
+//
+// Every source is chosen on its terms as much as its reachability, because a miner paid per answer
+// on a cash-prize network is not personal non-commercial use. Bitstamp grants redistribution for
+// commercial purposes in its own words; Frankfurter serves ECB reference rates with no quota and
+// says commercial use is fine; a Chainlink feed is public contract state, so there is no API and no
+// licence between a reader and the data. The keyless quote APIs are all blockers and none is called:
+// see the STOCK_FEEDS block and DATA-SOURCES.md for the clause that rules each one out.
 //
 // Same shape as the SkyWire and ChainWire miners: no API key, no database, every figure
 // read live at request time, providers raced or fallen back across so one slow endpoint
@@ -633,11 +640,6 @@ async function tvlLookup(entity) {
   return tvlSummary(await protocolTvl(c.slug));
 }
 // STOCK_PRICE
-//
-// Stooq serves a one-line CSV quote keylessly (Symbol,Date,Time,Open,High,Low,Close,Volume).
-// Yahoo's chart endpoint is the fallback: it works from the Cloudflare edge and adds the day
-// change, the previous close and the company name. Both are read in parallel and Stooq is
-// preferred when it answers, so a spot check is never blocked on one slow host.
 
 const STOCK_STOP = new Set(['THE', 'AND', 'FOR', 'USD', 'PRICE', 'STOCK', 'SHARE', 'QUOTE',
   'WHAT', 'IS', 'OF', 'HOW', 'NYSE', 'INC', 'CORP', 'LTD', 'CO', 'NASDAQ']);
@@ -815,15 +817,12 @@ function stockUnavailable(sym) {
     as_of: new Date().toISOString(),
   };
 }
-// Price to the source's precision, then every figure behind it. The day change comes from
-// Yahoo, the open, high, low and volume from either source. Figures the source did not give
-// are named as not reported rather than filled with a guess.
 // FINANCIAL_DATA
 //
-// A general financial figure, routed to the right source by what the query names. A TVL cue
-// goes to DeFiLlama, a stock cue to Stooq or Yahoo, a named crypto to CoinGecko. When nothing
-// is recognised the default is a Bitcoin market summary. An unknown single token is tried
-// as a protocol, then a coin, then a stock before giving up.
+// A general financial figure, routed to the right source by what the query names. A TVL cue goes to
+// DeFiLlama, a stock cue to the Chainlink equity feeds, a named crypto to the exchange tickers. When
+// nothing is recognised the default is a Bitcoin market summary. An unknown single token is tried as
+// a protocol, then a coin, then a stock ticker before giving up.
 
 // FINANCIAL_DATA wants the market figures, not just the price. Its questions name the market
 // cap and the 24 hour volume, and an answer that gives only the price scores zero against a
@@ -973,7 +972,8 @@ export default {
           STOCK_PRICE: '/stock/{symbol} or /stock?symbol=AAPL',
           FINANCIAL_DATA: '/financial/{query} or /financial?query=...',
         },
-        data: 'CoinGecko, Coinbase, Binance, Frankfurter (ECB reference rates), DeFiLlama, Stooq, Yahoo. Keyless.',
+        data: 'Kraken, Bitstamp and Gemini public tickers; Frankfurter (ECB reference rates); '
+          + 'DeFiLlama; Chainlink equity reference feeds read on-chain. All keyless.',
       });
     }
 
