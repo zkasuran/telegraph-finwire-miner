@@ -11,6 +11,7 @@ answer differently from a worker than from a laptop.
 
 | Host | Provides | Licence | Commercial use | Attribution | Rate limit |
 | --- | --- | --- | --- | --- | --- |
+| arb1.arbitrum.io (Chainlink equity feeds) | Share prices for AAPL, AMZN, COIN, GOOGL, META, MSFT, NVDA, SPY and TSLA | None applies: the value is public smart-contract state on a public chain. | Not restricted. Reading chain state is reading the chain. | Not required. The feed address and network are published in every answer. | No quota. One eth_call per uncached symbol, memoised for ten seconds. |
 | api.kraken.com | Crypto last trade, 24 hour volume and the day's open | No stated licence for the market data. | Not addressed by the published API terms, which state no restriction on the public market-data endpoints. | Not stated as required. The source is named in every answer. | No published figure for the public endpoints. One call per uncached asset, memoised for ten seconds. |
 | www.bitstamp.net | Crypto last trade and 24 hour volume, first fallback | Commercial reuse granted by the API terms. | Permitted in those words. The terms direct volume users to sign a data licence agreement. | Not stated as required. The source is named in every answer. | "As standard, all clients can make 400 requests per second" with "a default limit threshold of 10,000 requests per 10 minutes". |
 | api.gemini.com | Crypto last trade, second fallback | No stated licence for the market data. | Not addressed by the published API documentation. | Not stated as required. The source is named in every answer. | No published figure for the public ticker. Called only when the two preferred sources fail. |
@@ -20,6 +21,20 @@ answer differently from a worker than from a laptop.
 | api.llama.fi | Total value locked for a protocol or chain | No stated licence. | Barred on the free tier. | Not applicable while the source is unusable. | Published only as a general limit. |
 
 ## Per source
+
+### arb1.arbitrum.io (Chainlink equity feeds)
+
+Share prices for AAPL, AMZN, COIN, GOOGL, META, MSFT, NVDA, SPY and TSLA.
+
+What the terms say: Chainlink's own feed directory lists each as assetClass "Equity", marketHours "NYSE", decimals 8. There is no API and no terms of service between a reader and the data: an eth_call against the aggregator returns the same word any node returns.
+
+Commercial use: Not restricted. Reading chain state is reading the chain.
+
+Attribution: Not required. The feed address and network are published in every answer.
+
+Rate limit: No quota. One eth_call per uncached symbol, memoised for ten seconds.
+
+This replaced the STOCK_PRICE gap. Every keyless quote API is a blocker (see the stooq and Yahoo entries below), and a Chainlink feed is not an API: it is chain state. Two honesty consequences are carried in the answer rather than hidden: the feeds update on NYSE hours, so the answer states how old the reading is whenever it is over three hours, and the value is a Chainlink reference price rather than a venue's last trade, which `source` says. An earlier note in the worker claimed the AAPL feed read 7.42 rather than a share price; that was a decoding error, reading the roundId word instead of the answer word out of latestRoundData.
 
 ### api.kraken.com
 
@@ -99,7 +114,7 @@ Attribution: Not applicable while the source is unusable.
 
 Rate limit: No figure published.
 
-OPEN ITEM. Section 5.3 bars redistribution without consent, so this source is a blocker for STOCK_PRICE rather than a compliant source. The clause names the remedy: written consent from Stooq (www@stooq.com). Until that exists STOCK_PRICE has no licensed source, and the miner states its figure with the source named so a reader can see exactly what is being relied on.
+Never called. Section 5.3 bars redistribution without consent, so this source is a blocker rather than a compliant one. STOCK_PRICE is now served from Chainlink's on-chain equity reference feeds instead, which carry no data licence at all, so this is recorded as checked and rejected rather than as an open item.
 
 ### query1.finance.yahoo.com
 
@@ -113,7 +128,7 @@ Attribution: Not applicable while the source is unusable.
 
 Rate limit: No published figure. Returns 429 from a Cloudflare edge IP in any case.
 
-OPEN ITEM, same as Stooq. Recorded here because the code still names it as a fallback.
+Never called, and no longer named as a fallback anywhere in the worker. Recorded so the rejection is auditable.
 
 ### api.llama.fi
 
@@ -140,6 +155,4 @@ Met:
 
 Open, stated rather than hidden:
 
-- stooq.com: OPEN ITEM. Section 5.3 bars redistribution without consent, so this source is a blocker for STOCK_PRICE rather than a compliant source. The clause names the remedy: written consent from Stooq (www@stooq.com). Until that exists STOCK_PRICE has no licensed source, and the miner states its figure with the source named so a reader can see exactly what is being relied on.
-- query1.finance.yahoo.com: OPEN ITEM, same as Stooq. Recorded here because the code still names it as a fallback.
 - api.llama.fi: OPEN ITEM. DeFiLlama is the only keyless source of protocol TVL we found, and its terms bar both the commercial use and the republication. The swap paths are a DeFiLlama Pro licence or reading each protocol's own contracts, which is a much larger build.

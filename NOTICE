@@ -4,6 +4,16 @@ Each block below names one upstream, what it provides, the licence it publishes 
 exact credit line that licence requires. Every credit line marked required also travels in the
 `attribution` field of every answer this miner returns, not only in this file.
 
+## arb1.arbitrum.io (Chainlink equity feeds)
+
+Share prices for AAPL, AMZN, COIN, GOOGL, META, MSFT, NVDA, SPY and TSLA.
+
+Licence: None applies: the value is public smart-contract state on a public chain.
+
+In the provider's own words: Chainlink's own feed directory lists each as assetClass "Equity", marketHours "NYSE", decimals 8. There is no API and no terms of service between a reader and the data: an eth_call against the aggregator returns the same word any node returns.
+
+No credit line is required by this source.
+
 ## api.kraken.com
 
 Crypto last trade, 24 hour volume and the day's open.

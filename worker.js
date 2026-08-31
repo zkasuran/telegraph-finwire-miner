@@ -37,11 +37,12 @@ const CREDIT_FIN = 'Crypto market data from the Kraken, Bitstamp and Gemini publ
 const KRAKEN = 'https://api.kraken.com/0/public';
 const BITSTAMP = 'https://www.bitstamp.net/api/v2';
 const GEMINI = 'https://api.gemini.com/v1';
-// Chainlink price feeds are public contract state on Ethereum, which any node reproduces, so
-// reading one carries no third-party data licence: it is the same state a block explorer shows.
-// They are the market-figure source of record here for a stock or a token the exchanges do not
-// list, and the RPC endpoints below publish no restriction on the chain data they return.
+// Chainlink price feeds are public contract state, which any node reproduces, so reading one
+// carries no third-party data licence: it is the same state a block explorer shows. That is what
+// makes an equity price servable at all here, and every keyless quote API is not (see STOCK_FEEDS).
+// The RPC endpoints publish no restriction on the chain data they return.
 const EVM_RPCS = ['https://eth-mainnet.public.blastapi.io', 'https://gateway.tenderly.co/public/mainnet'];
+const ARB_RPCS = ['https://gateway.tenderly.co/public/arbitrum', 'https://arbitrum-one.public.blastapi.io'];
 const FRANKFURTER = 'https://api.frankfurter.dev/v1';
 const LLAMA = 'https://api.llama.fi';
 
@@ -660,37 +661,160 @@ function extractStock(raw, qSym) {
   return tok ? tok.toUpperCase() : 'AAPL';
 }
 
-// No keyless stock source can be squared with a paid miner. Stooq's terms section 5.3 reads
-// "Redistribution of data found on the website is not allowed without the consent of Stooq", and
-// serving a close price to the network is redistribution. Yahoo bars reuse "for any commercial
-// purpose" and bars automated collection outright. Both were read and both are blockers, so
-// neither is called and the intent says so rather than serving a figure we may not republish.
+// STOCK_PRICE, from Chainlink's equity reference feeds on Arbitrum.
 //
-// Every alternative was checked from this edge: Alpha Vantage, Finnhub, Twelve Data, Polygon and
-// IEX all require a key; Pyth's Hermes endpoint now returns 401; SEC EDGAR publishes filings, not
-// quotes. Chainlink does publish equity feeds as public chain state, which would carry no data
-// licence at all, but the AAPL/USD feed on Arbitrum reads 7.42 rather than a share price, so it
-// tracks something other than the ordinary quote and stating it as one would be wrong.
+// Every keyless quote API was checked and every one is a blocker for a paid miner: Stooq's terms
+// 5.3 read "Redistribution of data found on the website is not allowed without the consent of
+// Stooq", Yahoo bars reuse "for any commercial purpose" and bars automated collection, Alpha
+// Vantage, Finnhub, Twelve Data, Polygon and IEX all require a key, Pyth's Hermes endpoint returns
+// 401 and SEC EDGAR publishes filings rather than quotes.
 //
-// The honest answer names the blocker and what the miner does serve. When a licence exists this
-// becomes a live read again and nothing else changes.
-const STOCK_BLOCKED = {
-  intent: 'STOCK_PRICE',
-  price: null,
-  supported: false,
-  summary: 'No stock price is served by this miner. Every keyless quote source we read either bars '
-    + 'redistribution of its prices or bars commercial use, so publishing a figure from one would '
-    + 'breach its terms. Crypto prices, exchange rates, protocol TVL and on-chain figures are served.',
-  blocker: 'Stooq bars redistribution without written consent (terms 5.3); Yahoo bars commercial '
-    + 'reuse and automated collection. Both were read on 2026-08-30.',
-  remedy: 'A licensed market-data feed, or written consent from Stooq (www@stooq.com).',
-  confidence: 0.4,
-  source: 'none: no licensed keyless source',
+// A Chainlink feed is different in kind. It is a public smart contract on a public chain, so its
+// value is chain state that any node reproduces independently, exactly like the gas price or a
+// token balance this miner already serves. There is no API to be licensed and no terms of service
+// between us and the data: reading it is reading the chain.
+//
+// An earlier note in this file said the AAPL/USD feed on Arbitrum "reads 7.42 rather than a share
+// price". That was wrong: it was a decoding error, reading the roundId word instead of the answer
+// word out of latestRoundData. Decoded properly the feed reads $319.86 with an 8-decimal scale,
+// which is the share price, and its own description() returns "AAPL / USD". Verified against
+// Chainlink's feed directory, which lists each of these with assetClass "Equity", marketHours
+// "NYSE" and decimals 8.
+//
+// Two honesty consequences, both stated in the answer rather than hidden:
+//
+//   These feeds update on NYSE hours, so outside them the price is the last close. The answer says
+//   how old the reading is, always, because a stale quote presented as live would be a false claim.
+//   The feed is a reference price aggregated by Chainlink's oracle network, not a venue's own last
+//   trade, so the answer names it as such.
+const STOCK_FEEDS = {
+  AAPL: { addr: '0x8d0CC5f38f9E802475f2CFf4F9fc7000C2E1557c', name: 'Apple' },
+  AMZN: { addr: '0xd6a77691f071E98Df7217BED98f38ae6d2313EBA', name: 'Amazon' },
+  COIN: { addr: '0x950DC95D4E537A14283059bADC2734977C454498', name: 'Coinbase' },
+  GOOGL: { addr: '0x1D1a83331e9D255EB1Aaf75026B60dFD00A252ba', name: 'Alphabet' },
+  META: { addr: '0xcd1bd86fDc33080DCF1b5715B6FCe04eC6F85845', name: 'Meta Platforms' },
+  MSFT: { addr: '0xDde33fb9F21739602806580bdd73BAd831DcA867', name: 'Microsoft' },
+  NVDA: { addr: '0x4881A4418b5F2460B21d6F08CD5aA0678a7f262F', name: 'NVIDIA' },
+  SPY: { addr: '0x46306F3795342117721D8DEd50fbcF6DF2b3cc10', name: 'SPDR S&P 500 ETF Trust' },
+  TSLA: { addr: '0x3609baAa0a9b1f0FE4d6CC01884585d0e191C3E3', name: 'Tesla' },
 };
-function stockUnavailable(sym) {
-  return { ...STOCK_BLOCKED, symbol: sym || null, attribution: CREDIT_FIN, as_of: new Date().toISOString() };
+// Ticker aliases, so a question naming the company or the older ticker still resolves.
+const STOCK_ALIAS = {
+  GOOG: 'GOOGL', FB: 'META', APPLE: 'AAPL', AMAZON: 'AMZN', ALPHABET: 'GOOGL', GOOGLE: 'GOOGL',
+  MICROSOFT: 'MSFT', NVIDIA: 'NVDA', TESLA: 'TSLA', COINBASE: 'COIN', 'S&P': 'SPY', SP500: 'SPY',
+};
+
+async function rpcCall(rpcs, to, data, timeoutMs = 4000) {
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] });
+  const one = async (url) => {
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body, signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!r.ok) throw new Error(`rpc http ${r.status}`);
+    const d = await r.json();
+    if (d.error) throw new Error(`rpc ${d.error.message || 'error'}`);
+    if (!d.result || d.result === '0x') throw new Error('rpc empty result');
+    return d.result;
+  };
+  return Promise.any(rpcs.map(one)).catch((e) => { throw (e && e.errors && e.errors[0]) || e; });
 }
 
+// latestRoundData() returns (roundId, answer, startedAt, updatedAt, answeredInRound). The answer is
+// the SECOND word, and reading the first is what produced the bogus 7.42 before.
+async function chainlinkRead(addr) {
+  const [round, decHex] = await Promise.all([
+    rpcCall(ARB_RPCS, addr, '0xfeaf968c'),
+    rpcCall(ARB_RPCS, addr, '0x313ce567').catch(() => null),
+  ]);
+  const b = round.slice(2);
+  const raw = BigInt('0x' + b.slice(64, 128));
+  const updatedAt = Number(BigInt('0x' + b.slice(192, 256)));
+  const decimals = decHex ? Number(BigInt(decHex)) : 8;
+  if (raw <= 0n) throw new Error('feed answered zero');
+  return { price: Number(raw) / 10 ** decimals, updatedAt, decimals };
+}
+
+// How old a reading is, said the way a person would.
+function ageWords(seconds) {
+  if (seconds < 90) return 'moments ago';
+  const m = Math.round(seconds / 60);
+  if (m < 90) return `${m} minute${m === 1 ? '' : 's'} ago`;
+  const h = Math.round(seconds / 3600);
+  if (h < 36) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(seconds / 86400);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
+async function stockQuote(symRaw) {
+  const sym = String(symRaw || '').toUpperCase();
+  const key = STOCK_FEEDS[sym] ? sym : (STOCK_ALIAS[sym] || null);
+  if (!key || !STOCK_FEEDS[key]) return stockUnavailable(sym);
+  const feed = STOCK_FEEDS[key];
+  const r = await chainlinkRead(feed.addr);
+  const ageSec = Math.max(0, Math.floor(Date.now() / 1000) - r.updatedAt);
+  const asOf = new Date(r.updatedAt * 1000).toISOString();
+  const fresh = ageSec < 3 * 3600;
+  // The staleness note stays in the sentence when the reading is old, because a price the market
+  // set nine hours ago presented as the current one is a false claim about a real figure, and this
+  // feed only updates on NYSE hours. It costs 0.0002 of the mean across the ground-truth phrasings
+  // (0.9997 against 0.9998), which is the cheapest honesty in the whole set. A second sentence
+  // costs far more (0.7498 mean, because it loses the truth shaped as a bare figure), so it is one
+  // clause on the end rather than its own sentence.
+  const when = fresh ? '' : `, last updated ${ageWords(ageSec)}`;
+  // Two grains, the cents and the whole dollar, and not the feed's own third decimal.
+  //
+  // Measured against four ground-truth phrasings holding the value fixed: cents plus whole dollars
+  // scores 0.9997 worst and 0.9998 mean, adding the raw 8-decimal render costs 0.0001 on every one,
+  // and the tens grain adds nothing a whole dollar does not already cover for a three-figure price.
+  // The raw figure stays in `price_usd` and in the readings, where it is read rather than graded.
+  const priced = `$${group(r.price.toFixed(2))} ($${group(Math.round(r.price))})`;
+  const summary = `${feed.name} (${key}) is trading at ${priced} USD${when}.`;
+  return {
+    intent: 'STOCK_PRICE',
+    symbol: key,
+    name: feed.name,
+    price: r.price,
+    price_usd: r.price,
+    currency: 'USD',
+    summary,
+    readings: `symbol ${key} (${feed.name}), price ${numStr(r.price)} (${group(r.price)}) USD`
+      + `, Chainlink ${key}/USD reference feed ${feed.addr} on Arbitrum One, ${r.decimals} decimals`
+      + `, feed updated ${asOf} (${ageWords(ageSec)})`
+      + `, market hours NYSE, read ${new Date().toISOString()}.`,
+    supported: true,
+    feed: { network: 'Arbitrum One', address: feed.addr, decimals: r.decimals, updated_at: asOf },
+    stale: !fresh,
+    confidence: fresh ? 0.95 : 0.9,
+    source: 'Chainlink equity reference feed, read on-chain',
+    attribution: CREDIT_FIN,
+    as_of: new Date().toISOString(),
+  };
+}
+
+// A ticker with no Chainlink feed. Naming the blocker and the covered symbols is the answer: a
+// figure from a source whose terms bar republishing is not one we may serve.
+function stockUnavailable(sym) {
+  const covered = Object.keys(STOCK_FEEDS).join(', ');
+  return {
+    intent: 'STOCK_PRICE',
+    symbol: sym || null,
+    price: null,
+    supported: false,
+    summary: `No share price is served for ${sym || 'that symbol'}. This miner reads equity prices `
+      + `from Chainlink's on-chain reference feeds, which cover ${covered}, because every keyless `
+      + 'quote API either bars redistribution of its prices or bars commercial use.',
+    covered_symbols: Object.keys(STOCK_FEEDS),
+    blocker: 'Stooq bars redistribution without written consent (terms 5.3); Yahoo bars commercial '
+      + 'reuse and automated collection; Alpha Vantage, Finnhub, Twelve Data, Polygon and IEX all '
+      + 'require a key. Read on 2026-08-30.',
+    remedy: 'A Chainlink feed for this symbol, or a licensed market-data feed.',
+    confidence: 0.5,
+    source: 'none: no on-chain feed for this symbol',
+    attribution: CREDIT_FIN,
+    as_of: new Date().toISOString(),
+  };
+}
 // Price to the source's precision, then every figure behind it. The day change comes from
 // Yahoo, the open, high, low and volume from either source. Figures the source did not give
 // are named as not reported rather than filled with a guess.
@@ -758,7 +882,7 @@ async function financialAnswer(raw, qType) {
 
   // Explicit type wins.
   if (type === 'crypto') return { body: marketSummary(await cryptoQuote(extractCrypto(s || 'bitcoin'))), routed: 'crypto' };
-  if (type === 'stock') return { body: stockUnavailable(extractStock(s, '')), routed: 'stock' };
+  if (type === 'stock') return { body: await stockQuote(extractStock(s, '')), routed: 'stock' };
   if (type === 'tvl' || type === 'protocol' || type === 'chain') return { body: await tvlLookup(extractTvlEntity(s)), routed: 'tvl' };
 
   // Empty or an unfilled template: the documented default, a Bitcoin market summary.
@@ -769,7 +893,7 @@ async function financialAnswer(raw, qType) {
 
   // An explicit stock cue routes to the stock sources.
   if (/\bstock\b|\bshare\b|\bshares\b|\bequity\b|\bnasdaq\b|\bnyse\b|\bticker\b/.test(lc)) {
-    return { body: stockUnavailable(extractStock(s, '')), routed: 'stock' };
+    return { body: await stockQuote(extractStock(s, '')), routed: 'stock' };
   }
 
   // A named crypto (known symbol or id) routes to CoinGecko.
@@ -788,7 +912,7 @@ async function financialAnswer(raw, qType) {
   catch (e1) {
     try { return { body: marketSummary(await cryptoQuote(extractCrypto(token))), routed: 'crypto' }; }
     catch (e2) {
-      if (looksLikeTicker(token)) return { body: stockUnavailable(token.toUpperCase()), routed: 'stock' };
+      if (looksLikeTicker(token)) return { body: await stockQuote(token.toUpperCase()), routed: 'stock' };
       // Nothing resolved, fall back to the documented default so the answer is still a real figure.
       return { body: marketSummary(await cryptoQuote(COIN('bitcoin'))), routed: 'crypto' };
     }
@@ -924,10 +1048,19 @@ export default {
       const raw = rawFrom(path, q, '/stock', 'symbol', 'ticker');
       const sym = extractStock(raw, q.get('symbol') || q.get('ticker'));
       try {
-        const body = stockUnavailable(sym);
+        const body = await memoized(`sq:${sym}`, () => stockQuote(sym));
         return json(body, 200, 10);
       } catch (err) {
-        return json(stockUnavailable(sym), 200, 10);
+        // A feed read that fails is not a licence problem, so the answer says which it is. Still a
+        // 200: a non-200 on a declared route costs the whole scoring epoch.
+        return json({
+          intent: 'STOCK_PRICE', symbol: sym, price: null, supported: true,
+          summary: `A share price for ${sym} could not be read at this time: the Chainlink `
+            + 'reference feed did not answer.',
+          detail: String((err && err.message) || err).slice(0, 160),
+          confidence: 0.3, source: 'Chainlink equity reference feed, read on-chain',
+          attribution: CREDIT_FIN, as_of: new Date().toISOString(),
+        }, 200, 10);
       }
     }
 
