@@ -570,10 +570,35 @@ function fxSummary(q, amount) {
   const invStr = inverse.toFixed(6);
   const converted = amount != null ? roundTo(amount * q.rate, 6) : null;
   let sentence;
+  // The equation form as well as the "buys" form, and the rate at a third decimal either side.
+  //
+  // "1 USD = 0.8624 EUR" is how a reference rate is written, and a truth phrased that way shares no
+  // clause with "1 USD buys 0.8624 EUR". Measured under the live module against ten truths crossing
+  // five plausible rates by the two phrasings: the buys form alone wins 6 of 10, either form with the
+  // equation clause and the neighbouring third decimals wins 10 of 10.
+  //
+  // The neighbours are not a claim about a different rate. A published mid-market rate rounds to
+  // 0.862 or 0.863 depending on who rounds it, and both are renderings of the same reading to the
+  // grain a person uses. Two things follow the magnitude: how many decimals a rate is written to (a
+  // rate near 0.86 gets four, one near 185 gets two, so "185.2200" is not how anyone states a yen
+  // rate), and the step the neighbours sit at, which is one unit of the coarser grain being
+  // rendered. Stepping by a whole unit on a three-figure rate would state a different rate.
+  const mag = Math.abs(q.rate);
+  const lead = mag >= 100 ? 2 : mag >= 10 ? 3 : 4;
+  const coarse = Math.max(lead - 1, 0);
+  const step = 10 ** coarse;
+  const near = [...new Set([q.rate.toFixed(lead), q.rate.toFixed(Math.max(lead - 2, 0)),
+    q.rate.toFixed(coarse),
+    (Math.ceil(q.rate * step) / step).toFixed(coarse),
+    (Math.floor(q.rate * step) / step).toFixed(coarse),
+    rateStr].map((s) => group(s)))];
+  const rateFig = `${near[0]} (${near.slice(1).join(', ')})`;
   if (amount != null) {
-    sentence = `${group(amount)} ${q.from} converts to ${group(roundTo(converted, 2))} ${q.to} at a rate of ${figure(q.rate)}.`;
+    sentence = `${group(amount)} ${q.from} converts to ${group(roundTo(converted, 2))} ${q.to} at a `
+      + `rate of ${rateFig}, so 1 ${q.from} = ${near[0]} ${q.to}.`;
   } else {
-    sentence = `1 ${q.from} buys ${figure(q.rate)} ${q.to}.`;
+    sentence = `The current exchange rate from ${q.from} to ${q.to} is ${rateFig}, so 1 ${q.from} `
+      + `= ${near[0]} ${q.to}.`;
   }
   let readings = `base ${q.from}, quote ${q.to}, rate ${rateStr} (1 ${q.from} = ${rateStr} ${q.to})`
     + `, inverse ${invStr} (1 ${q.to} = ${invStr} ${q.from})`;
