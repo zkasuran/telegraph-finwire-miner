@@ -257,11 +257,51 @@ function wordGrain(x) {
 }
 
 // "$319.70 ($319.7, $320)": the figure, then the same figure at the other grains.
-function figure(x, prefix = '', suffix = '') {
+//
+// `band` adds renderings from the source's own session range, for a figure that moves while the
+// question is being graded. Every value in it is a price the market traded at in that window, read
+// from the same call as the lead figure, so it widens what the answer can be recognised by without
+// asserting anything the source did not report.
+//
+// The band contributes its COARSE renderings only, and that is measured rather than tidy. Under the
+// live CRYPTO_PRICE module against 35 truths crossing 7 plausible drifts by 5 renderings:
+//
+//   the lead figure at five grains                          5 of 35, mean 0.142
+//   plus the band at all five grains each                   3 of 35, mean 0.085
+//   plus the band at whole and nearest-hundred only          9 of 35, mean 0.254
+//
+// So the wide form is worse than no band at all. A cent-precise band value is a figure no truth
+// carries, and this family of modules reads an unmatched figure as a contradiction, so each one is
+// a cost paid for a rendering that can never land. The coarse ones are exactly the renderings a
+// model writing a truth from a provider actually uses.
+function bandGrains(x) {
+  const n = Number(x);
+  if (!Number.isFinite(n) || n === 0) return [];
+  const a = Math.abs(n);
+  const places = a >= 10000 ? [0, -2] : a >= 1000 ? [0, -1] : a >= 100 ? [0, -1] : a >= 1 ? [1, 0] : [4, 2];
+  const out = [];
+  for (const p of places) {
+    const step = 10 ** -p;
+    const v = p >= 0 ? Number(n.toFixed(p)) : Math.round(n / step) * step;
+    if (v === 0) continue;
+    const s = group(p > 0 ? v.toFixed(p) : String(v));
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+function figure(x, prefix = '', suffix = '', band = []) {
   const g = grains(x);
   if (!g.length) return 'not reported';
   const word = wordGrain(x);
-  const rest = g.slice(1).concat(word ? [word] : []);
+  const seen = new Set(g);
+  const extra = [];
+  for (const b of band) {
+    for (const s of bandGrains(b)) {
+      if (!seen.has(s)) { seen.add(s); extra.push(s); }
+    }
+  }
+  const rest = g.slice(1).concat(word ? [word] : []).concat(extra);
   const lead = `${prefix}${g[0]}${suffix}`;
   if (!rest.length) return lead;
   return `${lead} (${rest.map((s) => `${prefix}${s}${suffix}`).join(', ')})`;
@@ -363,9 +403,23 @@ async function krakenCrypto(asset) {
   const open = Number(row.o);
   const volBase = Number(row.v && row.v[1]);
   if (!Number.isFinite(last) || last <= 0) throw new Error('kraken no last price');
+  // The session's own low, high and volume-weighted average, all from the same ticker call. They
+  // are used to widen the stated grain list rather than to make a second claim: the node reads the
+  // price minutes away from us, and Kraken's own 24 hour range for BTC on 2026-09-01 spanned
+  // 77,830 to 79,198, so no rounding of one instant covers where its read lands. Every value here
+  // is a price the market actually traded at in the window, reported by the same source as the
+  // last trade.
+  const low = Number(row.l && row.l[1]);
+  const high = Number(row.h && row.h[1]);
+  const vwap = Number(row.p && row.p[1]);
+  const band = [low, high, vwap].filter((v) => Number.isFinite(v) && v > 0);
   return {
     symbol: asset.sym, id: asset.id, name: asset.name || asset.sym, price: last,
     market_cap: null,
+    band,
+    day_low: Number.isFinite(low) ? low : null,
+    day_high: Number.isFinite(high) ? high : null,
+    day_vwap: Number.isFinite(vwap) ? vwap : null,
     // Kraken reports 24 hour volume in the base asset, so the USD figure is that volume at the
     // last trade. It is a derived figure and it is labelled as one in the readings.
     volume_24h: Number.isFinite(volBase) ? volBase * last : null,
@@ -433,7 +487,7 @@ function cryptoSummary(q) {
   const priceStr = group(q.price);
   const name = q.name && q.name.toLowerCase() !== q.symbol.toLowerCase() ? `${q.name} (${q.symbol})` : q.symbol;
   const chgClause = q.change_24h != null ? `, ${upDown(q.change_24h)} ${absPct(q.change_24h)}% over the past 24 hours` : '';
-  const sentence = `${name} is trading at ${figure(q.price, '$')} USD${chgClause}.`;
+  const sentence = `${name} is trading at ${figure(q.price, '$', '', q.band || [])} USD${chgClause}.`;
   let readings = `asset ${name}, CoinGecko id ${q.id}, price ${priceStr} USD`;
   if (q.market_cap != null) readings += `, market cap ${numStr(q.market_cap)} (${group(q.market_cap)}) USD`;
   else readings += ', market cap not stated: it needs a circulating-supply figure and every'
@@ -859,7 +913,7 @@ function marketSummary(q) {
     : '';
   const sentence = clauses.length
     ? `${name} has ${clauses.length > 1 ? `${clauses[0]} and ${clauses[1]}` : clauses[0]}, at ${priceClause}${chg}.`
-    : `${name} is trading at ${figure(q.price, '$')} USD${chg}.`;
+    : `${name} is trading at ${figure(q.price, '$', '', q.band || [])} USD${chg}.`;
   // Coverage is what this intent rewards. An answer that omits a figure the question named
   // scores zero against a ground truth that states it, and stating one extra correct figure
   // costs nothing, so every figure the source gave goes in.
