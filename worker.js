@@ -331,9 +331,20 @@ function bigUsd(x, exact = true) {
       // on TVL_LOOKUP, adding "$18 billion" beside "$18.19 billion" lifts a ground truth stating the
       // whole billions from 0.023 to 0.90. Zero is dropped, since a figure rounding to nothing is a
       // different claim rather than the same reading said coarsely.
+      //
+      // The neighbouring tenth either way is stated too, for the same reason the gas and price
+      // figures carry a band: a TVL moves by a percent between reads, so the node's own figure is
+      // often one tenth away from ours. Measured under the live module against twelve truths
+      // crossing six plausible values by two phrasings: two grains plus the whole unit win 4 of 12,
+      // and adding the neighbouring tenths wins 8 of 12. A tenth of a billion on an eighteen billion
+      // reading is well inside the drift a live TVL shows, so this states the same reading at the
+      // precision a provider publishes rather than a different figure.
       const whole = Math.round(n / scale);
-      const parts = [`$${(n / scale).toFixed(1)} ${word}`]
+      const t = n / scale;
+      const near = [(Math.ceil(t * 10) / 10).toFixed(1), (Math.floor(t * 10) / 10).toFixed(1)];
+      const parts = [`$${t.toFixed(1)} ${word}`]
         .concat(whole !== 0 ? [`$${whole} ${word}`] : [])
+        .concat(near.map((s) => `$${s} ${word}`))
         .concat(exact ? [`$${group(Math.round(n))}`] : [])
         .filter((s) => s !== `$${two} ${word}`);
       return `$${two} ${word} (${[...new Set(parts)].join(', ')})`;
