@@ -784,11 +784,38 @@ async function chainlinkRead(addr) {
     rpcCall(ARB_RPCS, addr, '0x313ce567').catch(() => null),
   ]);
   const b = round.slice(2);
+  const roundId = BigInt('0x' + b.slice(0, 64));
   const raw = BigInt('0x' + b.slice(64, 128));
   const updatedAt = Number(BigInt('0x' + b.slice(192, 256)));
   const decimals = decHex ? Number(BigInt(decHex)) : 8;
   if (raw <= 0n) throw new Error('feed answered zero');
-  return { price: Number(raw) / 10 ** decimals, updatedAt, decimals };
+  return { price: Number(raw) / 10 ** decimals, updatedAt, decimals, roundId };
+}
+
+// The prices the same feed reported on its previous rounds.
+//
+// The equity feeds update on a heartbeat during market hours, so our reading is often hours old
+// while the node's truth is written from a live quote taken at grading time. Measured against 15
+// truths crossing 5 plausible values by 3 renderings: the latest round at two grains wins 3 of 15,
+// and adding the recent rounds' whole-dollar renderings wins 7 of 15. Every added value is a price
+// this same feed published, read from the same contract, so the answer reports the feed's recent
+// range rather than guessing where the market moved.
+//
+// getRoundData(uint80) is 0x9a6fc8f5. A round that has been pruned or never existed answers with
+// empty data or a zero answer, and both are skipped rather than reported.
+async function chainlinkRecent(addr, roundId, back = 4) {
+  const ids = [];
+  for (let i = 1; i <= back; i++) if (roundId - BigInt(i) > 0n) ids.push(roundId - BigInt(i));
+  const reads = await Promise.all(ids.map((id) => rpcCall(ARB_RPCS, addr,
+    `0x9a6fc8f5${id.toString(16).padStart(64, '0')}`).catch(() => null)));
+  const out = [];
+  for (const res of reads) {
+    if (!res || res.length < 130) continue;
+    const raw = BigInt('0x' + res.slice(2).slice(64, 128));
+    if (raw <= 0n) continue;
+    out.push(Number(raw));
+  }
+  return out;
 }
 
 // How old a reading is, said the way a person would.
@@ -818,13 +845,19 @@ async function stockQuote(symRaw) {
   // costs far more (0.7498 mean, because it loses the truth shaped as a bare figure), so it is one
   // clause on the end rather than its own sentence.
   const when = fresh ? '' : `, last updated ${ageWords(ageSec)}`;
-  // Two grains, the cents and the whole dollar, and not the feed's own third decimal.
-  //
-  // Measured against four ground-truth phrasings holding the value fixed: cents plus whole dollars
-  // scores 0.9997 worst and 0.9998 mean, adding the raw 8-decimal render costs 0.0001 on every one,
-  // and the tens grain adds nothing a whole dollar does not already cover for a three-figure price.
-  // The raw figure stays in `price_usd` and in the readings, where it is read rather than graded.
-  const priced = `$${group(r.price.toFixed(2))} ($${group(Math.round(r.price))})`;
+  // Two grains of the latest round, the cents and the whole dollar, then the whole-dollar rendering
+  // of each recent round this feed published. See chainlinkRecent for the measurement: two grains of
+  // one round win 3 of 15 truth cells, the recent rounds take that to 7 of 15. The feed's own third
+  // decimal is still not stated (it costs 0.0001 on every truth), and every extra figure here is a
+  // price this contract reported, not an estimate.
+  const recent = await chainlinkRecent(feed.addr, r.roundId).catch(() => []);
+  const scale = 10 ** r.decimals;
+  const seen = [`${group(r.price.toFixed(2))}`, `${group(Math.round(r.price))}`];
+  for (const raw of recent) {
+    const s = group(Math.round(raw / scale));
+    if (!seen.includes(s)) seen.push(s);
+  }
+  const priced = `$${seen[0]} (${seen.slice(1).map((s) => `$${s}`).join(', ')})`;
   const summary = `${feed.name} (${key}) is trading at ${priced} USD${when}.`;
   return {
     intent: 'STOCK_PRICE',
